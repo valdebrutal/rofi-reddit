@@ -21,7 +21,7 @@ void test_hot_listings_fetch_end_to_end(void) {
     RedditApp* app = new_reddit_app(cfg);
 
     RedditAccessToken* token = new_reddit_access_token(app);
-    const struct reddit_api_response* response = fetch_hot_listings(app, token, "libertarian");
+    struct reddit_api_response* response = fetch_hot_listings(app, token, "libertarian");
     if (response->status_code != HTTP_OK) {
         fprintf(stdout, "Access token is invalid or expired. Trying to fetch new one.\n");
         fetch_and_cache_token(app);

@@ -52,7 +52,6 @@ void test_happy_path(void) {
     assert_listing_equal(&expected, listing);
     free_listing(listing);
     json_decref(json);
-    ;
 }
 
 void test_no_data_key(void) {

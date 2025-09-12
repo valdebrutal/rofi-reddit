@@ -281,7 +281,7 @@ void free_listings(const struct listings* listings) {
     free((void*)listings);
 }
 
-const struct reddit_api_response* fetch_reddit_access_token_from_api(const RedditApp* app) {
+struct reddit_api_response* fetch_reddit_access_token_from_api(const RedditApp* app) {
     curl_easy_reset(app->http_client);
     struct response_buffer* buffer = new_response_buffer();
     struct curl_slist* ua_header = user_agent_header(app);
@@ -313,7 +313,7 @@ const struct reddit_api_response* fetch_reddit_access_token_from_api(const Reddi
 }
 
 RedditAccessToken* fetch_and_cache_token(RedditApp* app) {
-    const struct reddit_api_response* response = fetch_reddit_access_token_from_api(app);
+    struct reddit_api_response* response = fetch_reddit_access_token_from_api(app);
     if (response->status_code == HTTP_OK) {
         RedditAccessToken* token = deserialize_access_token(response->response_buffer);
         fprintf(stdout, "Obtained access token from API of size: %zu. Caching to %s\n", strlen(token->token),
@@ -368,15 +368,13 @@ RedditAccessToken* new_reddit_access_token(RedditApp* app) {
     return reddit_token;
 }
 
-void free_reddit_access_token(const RedditAccessToken* token) {
-    if (!token)
-        return;
-    free((void*)token->token);
-    free((void*)token);
+void free_reddit_access_token(RedditAccessToken* token) {
+    free(token->token);
+    free(token);
 }
 
-const struct reddit_api_response* fetch_hot_listings(const RedditApp* app, const RedditAccessToken* token,
-                                                     const char* subreddit) {
+struct reddit_api_response* fetch_hot_listings(const RedditApp* app, const RedditAccessToken* token,
+                                               const char* subreddit) {
     curl_easy_reset(app->http_client);
     struct response_buffer* response_buffer = new_response_buffer();
     struct curl_slist* ua_header = user_agent_header(app);
@@ -419,9 +417,29 @@ struct reddit_api_response* new_reddit_api_response(struct response_buffer* resp
     return reddit_response;
 }
 
-void free_reddit_api_response(const struct reddit_api_response* response) {
+void free_reddit_api_response(struct reddit_api_response* response) {
     if (!response)
         return;
-    // pointer to data is owned by the caller, so we don't free it here
-    free((void*)response);
+    free_response_buffer(response->response_buffer);
+    free(response);
+}
+
+enum subreddit_access subreddit_access_denied_reason(const struct reddit_api_response* response) {
+    json_error_t error;
+    json_t* root = json_loads((const char*)response->response_buffer->buffer, 0, &error);
+    enum subreddit_access access_status = SUBREDDIT_ACCESS_EXPIRED_TOKEN;
+    if (response->status_code == HTTP_FORBIDDEN && root && json_is_object(root)) {
+        access_status = SUBREDDIT_ACCESS_UNKNOWN;
+        json_t* reason = json_object_get(root, "reason");
+        if (reason && json_is_string(reason)) {
+            const char* reason_str = json_string_value(reason);
+            if (strcmp(reason_str, "private") == 0) {
+                access_status = SUBREDDIT_ACCESS_PRIVATE;
+            } else if (strcmp(reason_str, "quarantined") == 0) {
+                access_status = SUBREDDIT_ACCESS_QUARANTINED;
+            }
+        }
+    }
+    json_decref(root);
+    return access_status;
 }

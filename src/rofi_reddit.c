@@ -16,7 +16,7 @@ G_MODULE_EXPORT Mode mode;
 
 typedef struct {
     RedditApp* app;
-    const RedditAccessToken* token;
+    RedditAccessToken* token;
     struct listings* listings;
     char* selected_subreddit;
     enum subreddit_access subreddit_access;
@@ -51,26 +51,6 @@ static unsigned int rofi_reddit_mode_get_num_entries(const Mode* mode) {
     return 0;
 }
 
-static enum subreddit_access subreddit_access_denied_reason(const struct reddit_api_response* response) {
-    json_error_t error;
-    json_t* root = json_loads((const char*)response->response_buffer->buffer, 0, &error);
-    enum subreddit_access access_status = SUBREDDIT_ACCESS_EXPIRED_TOKEN;
-    if (response->status_code == HTTP_FORBIDDEN && root && json_is_object(root)) {
-        access_status = SUBREDDIT_ACCESS_UNKNOWN;
-        json_t* reason = json_object_get(root, "reason");
-        if (reason && json_is_string(reason)) {
-            const char* reason_str = json_string_value(reason);
-            if (strcmp(reason_str, "private") == 0) {
-                access_status = SUBREDDIT_ACCESS_PRIVATE;
-            } else if (strcmp(reason_str, "quarantined") == 0) {
-                access_status = SUBREDDIT_ACCESS_QUARANTINED;
-            }
-        }
-        json_decref(root);
-    }
-    return access_status;
-}
-
 static char* sanitize_subrredit_name(const char* subreddit) {
     if (!subreddit || strlen(subreddit) == 0)
         return NULL;
@@ -85,6 +65,29 @@ static char* sanitize_subrredit_name(const char* subreddit) {
     char* final = g_strdup(result->str);
     g_string_free(result, TRUE);
     return final;
+}
+
+static void handle_forbidden_response(RofiRedditModePrivateData* pd, enum subreddit_access access) {
+    switch (access) {
+    case SUBREDDIT_ACCESS_EXPIRED_TOKEN:
+        fprintf(stdout, "Access token is expired, attempting to refresh it.\n");
+        free_reddit_access_token(pd->token);
+        pd->token = NULL;
+        size_t attempts = 0;
+        while (!pd->token && attempts < 5) {
+            pd->token = fetch_and_cache_token(pd->app);
+            attempts++;
+            fprintf(stdout, "Attempt: %zu\n", attempts);
+        }
+        break;
+    case SUBREDDIT_ACCESS_QUARANTINED:
+    case SUBREDDIT_ACCESS_UNKNOWN:
+    case SUBREDDIT_ACCESS_PRIVATE:
+        pd->subreddit_access = access;
+        break;
+    default:
+        break;
+    }
 }
 
 static ModeMode rofi_reddit_mode_result(Mode* mode, int mretv, char** input, unsigned int selected_line) {
@@ -110,8 +113,7 @@ static ModeMode rofi_reddit_mode_result(Mode* mode, int mretv, char** input, uns
         }
         private_data->selected_subreddit = subreddit;
         fprintf(stdout, "Fetching subreddit=%s listings.\n", subreddit);
-        const struct reddit_api_response* response =
-            fetch_hot_listings(private_data->app, private_data->token, subreddit);
+        struct reddit_api_response* response = fetch_hot_listings(private_data->app, private_data->token, subreddit);
         switch (response->status_code) {
         case HTTP_OK:
             private_data->listings = deserialize_listings(response->response_buffer);
@@ -120,24 +122,12 @@ static ModeMode rofi_reddit_mode_result(Mode* mode, int mretv, char** input, uns
         case HTTP_UNAUTHORIZED:
         case HTTP_FORBIDDEN:
             enum subreddit_access denied_reason = subreddit_access_denied_reason(response);
-            switch (denied_reason) {
-            case SUBREDDIT_ACCESS_EXPIRED_TOKEN:
-                free_reddit_access_token(private_data->token);
-                private_data->token = fetch_and_cache_token(private_data->app);
-                retv = rofi_reddit_mode_result(mode, mretv, (char**)&subreddit, selected_line);
-                break;
-            case SUBREDDIT_ACCESS_QUARANTINED:
-            case SUBREDDIT_ACCESS_UNKNOWN:
-            case SUBREDDIT_ACCESS_PRIVATE:
-                private_data->subreddit_access = denied_reason;
-                break;
-            default:
-                break;
-            }
+            handle_forbidden_response(private_data, denied_reason);
+            if (denied_reason == SUBREDDIT_ACCESS_EXPIRED_TOKEN)
+                rofi_reddit_mode_result(mode, MENU_CUSTOM_INPUT, &subreddit, selected_line);
             break;
         case HTTP_NOT_FOUND:
             private_data->subreddit_access = SUBREDDIT_ACCESS_DOESNT_EXIST;
-            retv = RELOAD_DIALOG;
         default:
             break;
         }
@@ -145,8 +135,7 @@ static ModeMode rofi_reddit_mode_result(Mode* mode, int mretv, char** input, uns
             fprintf(stdout, "Collected listings: %zu\n", private_data->listings->count);
         }
         retv = RELOAD_DIALOG;
-        if (response)
-            free_reddit_api_response(response);
+        free_reddit_api_response(response);
     }
     return retv;
 }

@@ -41,10 +41,10 @@ RedditApp* new_reddit_app(struct rofi_reddit_cfg* config);
 void free_reddit_app(RedditApp* app);
 
 typedef struct {
-    const char* token;
+    char* token;
 } RedditAccessToken;
 
-const struct reddit_api_response* fetch_reddit_access_token_from_api(const RedditApp* app);
+struct reddit_api_response* fetch_reddit_access_token_from_api(const RedditApp* app);
 RedditAccessToken* fetch_and_cache_token(RedditApp* app);
 
 struct listing {
@@ -65,20 +65,20 @@ void deserialize_listing(json_t* listing_json, struct listing* deserialize_to, s
 
 void free_listings(const struct listings* listings);
 
-const struct reddit_api_response* fetch_hot_listings(const RedditApp* app, const RedditAccessToken* token,
-                                                     const char* subreddit);
+struct reddit_api_response* fetch_hot_listings(const RedditApp* app, const RedditAccessToken* token,
+                                               const char* subreddit);
 
 RedditAccessToken* new_reddit_access_token(RedditApp* app);
 
-void free_reddit_access_token(const RedditAccessToken* token);
+void free_reddit_access_token(RedditAccessToken* token);
 
 struct reddit_api_response {
     enum http_status_code status_code;
-    const struct response_buffer* response_buffer;
+    struct response_buffer* response_buffer;
 };
 
 struct reddit_api_response* new_reddit_api_response(struct response_buffer* response, long* status_code);
-void free_reddit_api_response(const struct reddit_api_response* response);
+void free_reddit_api_response(struct reddit_api_response* response);
 
 enum subreddit_access {
     SUBREDDIT_ACCESS_UNINITIALIZED,
@@ -89,5 +89,7 @@ enum subreddit_access {
     SUBREDDIT_ACCESS_EXPIRED_TOKEN,
     SUBREDDIT_ACCESS_UNKNOWN
 };
+
+enum subreddit_access subreddit_access_denied_reason(const struct reddit_api_response* response);
 
 #endif
