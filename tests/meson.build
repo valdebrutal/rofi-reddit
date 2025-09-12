@@ -56,34 +56,44 @@ mocks = static_library(
 
 test_env = ['LC_ALL=C']
 
-unit_test_access_token_fetch_exec = executable(
-  'unit-test-access-token',
-  ['fixtures.c', 'test_access_token_fetch.c'],
-  objects: rofi_reddit_shared_lib.extract_objects('reddit.c', 'memory.c'),
-  dependencies: [unity_dep] + deps,
-  link_with: [mocks],
-  include_directories: ['mocks', project_inc],
-)
-
 test(
   'unit_test_access_token',
-  unit_test_access_token_fetch_exec,
+  executable(
+    'unit-test-access-token',
+    ['fixtures.c', 'test_access_token_fetch.c'],
+    objects: rofi_reddit_shared_lib.extract_objects('reddit.c', 'memory.c'),
+    dependencies: [unity_dep] + deps,
+    link_with: [mocks],
+    include_directories: ['mocks', project_inc],
+  ),
   env: test_env,
   protocol: 'exitcode',
   workdir: meson.current_source_dir(),
 )
 
-unit_test_deserialize_listing_exec = executable(
-  'unit-test-deserialize-listing',
-  ['test_deserialize_listing.c'],
-  objects: rofi_reddit_shared_lib.extract_objects('reddit.c', 'memory.c', 'curl_wrappers.c'),
-  include_directories: [project_inc],
-  dependencies: [unity_dep] + deps,
+test(
+  'unit_test_deserialize_listing',
+  executable(
+    'unit-test-deserialize-listing',
+    ['test_deserialize_listing.c'],
+    objects: rofi_reddit_shared_lib.extract_objects('reddit.c', 'memory.c', 'curl_wrappers.c'),
+    include_directories: [project_inc],
+    dependencies: [unity_dep] + deps,
+  ),
+  env: test_env,
+  protocol: 'exitcode',
+  workdir: meson.current_source_dir(),
 )
 
 test(
-  'unit_test_deserialize_listing',
-  unit_test_deserialize_listing_exec,
+  'unit_test_subreddit_access_denied',
+  executable(
+    'unit-test-subreddit-access-denied',
+    ['test_subreddit_access_denied.c'],
+    objects: rofi_reddit_shared_lib.extract_objects('reddit.c', 'memory.c', 'curl_wrappers.c'),
+    include_directories: [project_inc],
+    dependencies: [unity_dep] + deps,
+  ),
   env: test_env,
   protocol: 'exitcode',
   workdir: meson.current_source_dir(),
@@ -92,17 +102,15 @@ test(
 message('Expected config file path: ', config_file)
 
 if fs.exists(config_file)
-  integration_test_access_token_exec = executable(
-    'integration-test-access-token',
-    ['integration_test_access_token.c'],
-    objects: rofi_reddit_shared_lib.extract_objects('reddit.c', 'curl_wrappers.c', 'memory.c'),
-    dependencies: deps + [unity_dep],
-    include_directories: [project_inc],
-  )
-
   test(
     'integration_test_access_token',
-    integration_test_access_token_exec,
+    executable(
+      'integration-test-access-token',
+      ['integration_test_access_token.c'],
+      objects: rofi_reddit_shared_lib.extract_objects('reddit.c', 'curl_wrappers.c', 'memory.c'),
+      dependencies: deps + [unity_dep],
+      include_directories: [project_inc],
+    ),
     env: test_env,
     protocol: 'exitcode',
     workdir: meson.current_source_dir(),
