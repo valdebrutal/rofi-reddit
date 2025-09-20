@@ -3,6 +3,7 @@ main_sources = [
   'curl_wrappers.c',
   'memory.c',
   'rofi_reddit.c',
+  'history.c',
 ]
 
 pluginsdir = rofi_dependency.get_variable('pluginsdir')

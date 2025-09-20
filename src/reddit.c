@@ -59,6 +59,16 @@ static int create_dir_if_not_exists(const char* path) {
     return 0;
 }
 
+static char* path_to_xdg_data_dir_at(char* xdg_env, char* xdg_fallback_path, char* subpath) {
+    char* dir = xdg_env && xdg_env[0] != '\0' ? xdg_env : xdg_fallback_path;
+    if (create_dir_if_not_exists(dir) != 0) {
+        fprintf(stderr, "Failed to create or access %s. Check permissions.\n", dir);
+        free(dir);
+        exit(EXIT_FAILURE);
+    }
+    return g_build_filename(dir, subpath, NULL);
+}
+
 struct rofi_reddit_paths* new_rofi_reddit_paths() {
     char* plugin_cfg_dir = g_build_filename("/", "usr", "share", "rofi-reddit", NULL);
     struct stat cfg_dir_stat;
@@ -80,28 +90,22 @@ struct rofi_reddit_paths* new_rofi_reddit_paths() {
     }
     struct rofi_reddit_paths* paths = LOG_ERR_MALLOC(struct rofi_reddit_paths, 1);
     paths->config_path = config_file_path;
-    char* xdg_cache = getenv("XDG_CACHE_HOME");
-    char* user_cache_dir =
-        xdg_cache && xdg_cache[0] != '\0' ? xdg_cache : g_build_filename(getenv("HOME"), ".cache", NULL);
-    char* plugin_cache_dir = g_build_filename(user_cache_dir, "rofi-reddit", NULL);
-    free(user_cache_dir);
-    if (create_dir_if_not_exists(plugin_cache_dir) != 0) {
-        fprintf(stderr,
-                "Failed to create or access cache directory at %s. Check permissions. This will lead to more Reddit "
-                "API calls than necessary.\n",
-                plugin_cache_dir);
-        free(plugin_cache_dir);
-        free_rofi_reddit_paths(paths);
-        exit(EXIT_FAILURE);
-    }
+    char* plugin_cache_dir = path_to_xdg_data_dir_at(getenv("XDG_CACHE_HOME"),
+                                                     g_build_filename(getenv("HOME"), ".cache", NULL), "rofi-reddit");
     paths->access_token_cache_path = g_build_filename(plugin_cache_dir, "access_token", NULL);
+    free(plugin_cache_dir);
     struct stat access_token_cache_stat;
     // access token exists, process has read permissions and file is nonempty
     paths->access_token_cache_exists = stat(paths->access_token_cache_path, &access_token_cache_stat) == 0 &&
-                                       access(paths->access_token_cache_path, R_OK) == 0 && cfg_dir_stat.st_size > 0;
+                                       access(paths->access_token_cache_path, R_OK) == 0;
 
-    free(plugin_cache_dir);
-    free(xdg_cache);
+    char* plugin_data_dir = path_to_xdg_data_dir_at(getenv("XDG_DATA_HOME"),
+                                                    g_build_filename(getenv("HOME"), ".local", "share", NULL), "rofi");
+    paths->subreddit_history_path = g_build_filename(plugin_data_dir, "rofi_reddit_history", NULL);
+    free(plugin_data_dir);
+    struct stat subreddit_history_stat;
+    paths->subreddit_history_path_exists = stat(paths->subreddit_history_path, &subreddit_history_stat) == 0 &&
+                                           access(paths->subreddit_history_path, R_OK | W_OK) == 0;
     return paths;
 }
 

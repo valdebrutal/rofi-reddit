@@ -5,6 +5,7 @@
 
 #include "curl_wrappers.h"
 #include "glib.h"
+#include "history.h"
 #include "reddit.h"
 #include <rofi/helper.h>
 #include <rofi/mode-private.h>
@@ -20,6 +21,7 @@ typedef struct {
     struct listings* listings;
     char* selected_subreddit;
     enum subreddit_access subreddit_access;
+    struct subreddit_history* subreddit_history;
 } RofiRedditModePrivateData;
 
 static int rofi_reddit_mode_init(Mode* mode) {
@@ -36,6 +38,7 @@ static int rofi_reddit_mode_init(Mode* mode) {
         if (!token)
             exit(EXIT_FAILURE);
         private_data->token = token;
+        private_data->subreddit_history = new_subreddit_history(paths);
         private_data->listings = NULL;
         private_data->selected_subreddit = NULL;
         private_data->subreddit_access = SUBREDDIT_ACCESS_UNINITIALIZED;
@@ -48,7 +51,9 @@ static unsigned int rofi_reddit_mode_get_num_entries(const Mode* mode) {
     const RofiRedditModePrivateData* private_data = (const RofiRedditModePrivateData*)mode_get_private_data(mode);
     if (private_data->listings)
         return private_data->listings->count;
-    return 0;
+    if (private_data->subreddit_history)
+        return private_data->subreddit_history->count;
+    return 1;
 }
 
 static char* sanitize_subrredit_name(const char* subreddit) {
@@ -95,9 +100,7 @@ static ModeMode rofi_reddit_mode_result(Mode* mode, int mretv, char** input, uns
     RofiRedditModePrivateData* private_data = (RofiRedditModePrivateData*)mode_get_private_data(mode);
     if (mretv & MENU_NEXT) {
         retv = NEXT_DIALOG;
-    } else if (mretv & MENU_OK) {
-        if (!private_data->listings || selected_line >= private_data->listings->count)
-            return MODE_EXIT;
+    } else if (mretv & MENU_OK && (private_data->listings && private_data->listings->count > 0)) {
         char* url = private_data->listings->items[selected_line].url;
         char* cmdline = g_strdup_printf("xdg-open '%s'", url);
         g_spawn_command_line_async(cmdline, NULL);
@@ -105,12 +108,15 @@ static ModeMode rofi_reddit_mode_result(Mode* mode, int mretv, char** input, uns
         return MODE_EXIT;
     } else if (mretv & MENU_PREVIOUS) {
         retv = PREVIOUS_DIALOG;
-    } else if ((mretv & MENU_CUSTOM_INPUT)) {
-        char* subreddit = sanitize_subrredit_name(*input);
+    } else if ((mretv & MENU_CUSTOM_INPUT || (mretv & MENU_OK))) {
+        char* subreddit = !private_data->listings && selected_line != 0
+                              ? private_data->subreddit_history->entries[selected_line].subreddit
+                              : sanitize_subrredit_name(*input);
         if (!subreddit || strlen(subreddit) == 0) {
             private_data->subreddit_access = SUBREDDIT_ACCESS_UNKNOWN;
             return RELOAD_DIALOG;
         }
+        add_history_entry(subreddit, private_data->subreddit_history);
         private_data->selected_subreddit = subreddit;
         fprintf(stdout, "Fetching subreddit=%s listings.\n", subreddit);
         struct reddit_api_response* response = fetch_hot_listings(private_data->app, private_data->token, subreddit);
@@ -148,6 +154,7 @@ static void rofi_reddit_mode_destroy(Mode* mode) {
         free_reddit_app(private_data->app);
         free_listings(private_data->listings);
         free(private_data->selected_subreddit);
+        free_subreddit_history(private_data->subreddit_history);
         g_free(private_data);
         mode_set_private_data(mode, NULL);
     }
@@ -157,7 +164,7 @@ static char* get_display_value(const Mode* mode, unsigned int selected_line, G_G
                                G_GNUC_UNUSED GList** attr_list, int get_entry) {
     RofiRedditModePrivateData* private_data = (RofiRedditModePrivateData*)mode_get_private_data(mode);
     if (!private_data->listings) {
-        return g_strdup("OOPS!"); // TODO: implement history of subreddits
+        return g_strdup_printf("%s", private_data->subreddit_history->entries[selected_line].subreddit);
     }
     if (selected_line >= private_data->listings->count) {
         fprintf(stderr, "Selected line out of range.\n");
@@ -178,14 +185,12 @@ static char* get_message(const Mode* mode) {
         message = "Type a subreddit to fetch threads for!";
         break;
     case SUBREDDIT_ACCESS_OK:
-        if (private_data->listings && private_data->listings->count > 0) {
+        message = "No threads available on this subreddit. Type another subreddit to fetch "
+                  "threads for!";
+        if (private_data->listings && private_data->listings->count > 0)
             message = g_strdup_printf("Found %zu threads for subreddit '%s'. Now select a thread "
                                       "to open in your browser!",
                                       private_data->listings->count, private_data->selected_subreddit);
-        } else {
-            message = "No threads available on this subreddit. Type another subreddit to fetch "
-                      "threads for!";
-        }
         break;
     case SUBREDDIT_ACCESS_DOESNT_EXIST:
         message = "This subreddit does not exist. Please try another one.";

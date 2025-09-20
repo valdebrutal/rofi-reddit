@@ -12,6 +12,8 @@ struct rofi_reddit_paths {
     const char* config_path;
     const char* access_token_cache_path;
     bool access_token_cache_exists;
+    const char* subreddit_history_path;
+    bool subreddit_history_path_exists;
 };
 
 struct rofi_reddit_paths* new_rofi_reddit_paths();
