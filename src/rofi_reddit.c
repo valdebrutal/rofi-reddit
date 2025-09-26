@@ -126,12 +126,13 @@ static ModeMode rofi_reddit_mode_result(Mode* mode, int mretv, char** input, uns
             private_data->subreddit_access = SUBREDDIT_ACCESS_OK;
             break;
         case HTTP_UNAUTHORIZED:
-        case HTTP_FORBIDDEN:
+        case HTTP_FORBIDDEN: {
             enum subreddit_access denied_reason = subreddit_access_denied_reason(response);
             handle_forbidden_response(private_data, denied_reason);
             if (denied_reason == SUBREDDIT_ACCESS_EXPIRED_TOKEN)
                 rofi_reddit_mode_result(mode, MENU_CUSTOM_INPUT, &subreddit, selected_line);
             break;
+        }
         case HTTP_NOT_FOUND:
             private_data->subreddit_access = SUBREDDIT_ACCESS_DOESNT_EXIST;
         default:

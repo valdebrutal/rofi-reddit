@@ -25,10 +25,9 @@ struct subreddit_history* new_subreddit_history(struct rofi_reddit_paths* paths)
     char entry_buffer[MAX_HISTORY_ENTRY_LENGTH];
     while (fgets(entry_buffer, MAX_HISTORY_ENTRY_LENGTH, history_file)) {
         entry_buffer[strcspn(entry_buffer, "\n")] = '\0';
-        strncpy(history_entries_buffer + (history_records_read * MAX_HISTORY_ENTRY_LENGTH), entry_buffer,
-                MAX_HISTORY_ENTRY_LENGTH - 1);
-        fprintf(stdout, "History Entry: %s\n",
-                (history_entries_buffer + (history_records_read * MAX_HISTORY_ENTRY_LENGTH)));
+        size_t offset = (history_records_read * MAX_HISTORY_ENTRY_LENGTH);
+        strncpy(history_entries_buffer + offset, entry_buffer, MAX_HISTORY_ENTRY_LENGTH - 1);
+        fprintf(stdout, "History Entry: %s\n", history_entries_buffer + offset);
         history_records_read++;
     }
     fprintf(stdout, "History entries read: %zu\n", history_records_read);
@@ -66,7 +65,6 @@ void free_subreddit_history(struct subreddit_history* history) {
     if (!history)
         return;
     fseek(history->history_file, 0, SEEK_END);
-    fprintf(stdout, "Freeing history!\n");
     for (size_t i = history->count - 1; i > 0; i--) {
         struct history_entry entry = history->entries[i];
         if (entry.is_new) { // persist new entries
@@ -81,24 +79,19 @@ void free_subreddit_history(struct subreddit_history* history) {
 
 void add_history_entry(char* subreddit, struct subreddit_history* history) {
     // Evict oldest if at capacity
-    fprintf(stdout, "Registering history entry!\n");
     if (history->count == history->capacity) {
         // Shift all entries except [0] ("Add to history") down by one
         for (size_t i = history->count - 1; i > 1; i--) {
             history->entries[i] = history->entries[i - 1];
         }
-        // Copy new string for the new entry
-        strncpy(history->entries[1].subreddit, subreddit, MAX_HISTORY_ENTRY_LENGTH - 1);
-        history->entries[1].subreddit[MAX_HISTORY_ENTRY_LENGTH - 1] = '\0';
-        history->entries[1].is_new = true;
     } else {
         // Shift all entries except [0] down by one
         for (size_t i = history->count; i > 1; i--) {
             history->entries[i] = history->entries[i - 1];
         }
-        strncpy(history->entries[1].subreddit, subreddit, MAX_HISTORY_ENTRY_LENGTH - 1);
-        history->entries[1].subreddit[MAX_HISTORY_ENTRY_LENGTH - 1] = '\0';
-        history->entries[1].is_new = true;
         history->count++;
     }
+    strncpy(history->entries[1].subreddit, subreddit, MAX_HISTORY_ENTRY_LENGTH - 1);
+    history->entries[1].subreddit[MAX_HISTORY_ENTRY_LENGTH - 1] = '\0';
+    history->entries[1].is_new = true;
 }

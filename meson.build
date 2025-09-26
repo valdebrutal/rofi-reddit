@@ -21,8 +21,19 @@ project_inc = include_directories('src')
 plugin_config_dir = '/' / 'usr' / 'share' / 'rofi-reddit'
 config_file = plugin_config_dir / 'config.toml'
 
+link_args = ['-Wl,--unresolved-symbols=ignore-all']
+extra_inc = include_directories()
+install = true
+if host_machine.system() == 'darwin'
+  link_args = ['-Wl,-undefined,dynamic_lookup']
+  extra_inc = include_directories(
+    '/opt/homebrew/opt/glib/include/glib-2.0',
+  )
+  install = false
+endif
+
 fs = import('fs')
-if not fs.exists(config_file)
+if not fs.exists(config_file) and install
   install_data('config.toml', install_dir: plugin_config_dir, install_mode: 'rw----r--')
 endif
 

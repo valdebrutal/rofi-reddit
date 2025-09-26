@@ -99,6 +99,20 @@ test(
   workdir: meson.current_source_dir(),
 )
 
+test(
+  'unit_test_history',
+  executable(
+    'unit-test-history',
+    ['test_history.c'],
+    objects: rofi_reddit_shared_lib.extract_objects('history.c', 'reddit.c', 'memory.c', 'curl_wrappers.c'),
+    include_directories: [project_inc],
+    dependencies: [unity_dep] + deps,
+  ),
+  env: test_env,
+  protocol: 'exitcode',
+  workdir: meson.current_source_dir(),
+)
+
 message('Expected config file path: ', config_file)
 
 if fs.exists(config_file)
