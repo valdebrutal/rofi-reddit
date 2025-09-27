@@ -24,4 +24,6 @@ struct subreddit_history* new_subreddit_history(struct rofi_reddit_paths* paths)
 void free_subreddit_history(struct subreddit_history* history);
 void add_history_entry(char* subreddit, struct subreddit_history* history);
 
+size_t read_history_entries(FILE* history_file, char* buffer);
+void fill_history_entries(struct subreddit_history* history, char* buffer, size_t history_records_read);
 #endif
