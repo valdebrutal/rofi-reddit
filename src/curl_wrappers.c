@@ -1,24 +1,23 @@
 #include "curl_wrappers.h"
-#include "memory.h"
 #include <curl/curl.h>
-#include <stdlib.h>
+#include <glib.h>
 
 static const int INITIAL_RESPONSE_BUFFER_SIZE = (256 * 1024);
 
 struct response_buffer* new_response_buffer() {
-    struct response_buffer* resp = (struct response_buffer*)LOG_ERR_MALLOC(struct response_buffer, 1);
-    resp->buffer = LOG_ERR_MALLOC(char, INITIAL_RESPONSE_BUFFER_SIZE);
+    struct response_buffer* resp = g_new(struct response_buffer, 1);
+    resp->buffer = g_new(char, INITIAL_RESPONSE_BUFFER_SIZE);
     resp->size = 0;
     return resp;
 }
 
 void free_response_buffer(struct response_buffer* resp) {
-    free(resp->buffer);
-    free(resp);
+    g_free(resp->buffer);
+    g_free(resp);
 }
 
 long* get_response_status(CURL* client) {
-    long* http_code = (long*)malloc(sizeof(long));
+    long* http_code = g_new(long, 1);
     curl_easy_getinfo(client, CURLINFO_RESPONSE_CODE, http_code);
     return http_code;
 }

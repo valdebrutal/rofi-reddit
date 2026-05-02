@@ -7,6 +7,7 @@
 #include "glib.h"
 #include "history.h"
 #include "reddit.h"
+#include "subreddit_input.h"
 #include <rofi/helper.h>
 #include <rofi/mode-private.h>
 #include <rofi/mode.h>
@@ -49,27 +50,16 @@ static int rofi_reddit_mode_init(Mode* mode) {
 
 static unsigned int rofi_reddit_mode_get_num_entries(const Mode* mode) {
     const RofiRedditModePrivateData* private_data = (const RofiRedditModePrivateData*)mode_get_private_data(mode);
-    if (private_data->listings)
+    if (private_data->listings && private_data->listings->count > 0)
         return private_data->listings->count;
     if (private_data->subreddit_history)
         return private_data->subreddit_history->count;
     return 1;
 }
 
-static char* sanitize_subrredit_name(const char* subreddit) {
-    if (!subreddit || strlen(subreddit) == 0)
-        return NULL;
-    char* trimmed = g_strstrip(g_strdup(subreddit));
-    GString* result = g_string_new(NULL);
-    for (const char* p = trimmed; *p; ++p) {
-        if (!g_ascii_isspace(*p)) {
-            g_string_append_c(result, *p);
-        }
-    }
-    g_free(trimmed);
-    char* final = g_strdup(result->str);
-    g_string_free(result, TRUE);
-    return final;
+static void set_selected_subreddit(RofiRedditModePrivateData* private_data, const char* subreddit) {
+    g_free(private_data->selected_subreddit);
+    private_data->selected_subreddit = subreddit ? g_strdup(subreddit) : NULL;
 }
 
 static void handle_forbidden_response(RofiRedditModePrivateData* pd, enum subreddit_access access) {
@@ -82,7 +72,6 @@ static void handle_forbidden_response(RofiRedditModePrivateData* pd, enum subred
         while (!pd->token && attempts < 5) {
             pd->token = fetch_and_cache_token(pd->app);
             attempts++;
-            fprintf(stdout, "Attempt: %zu\n", attempts);
         }
         break;
     case SUBREDDIT_ACCESS_QUARANTINED:
@@ -109,37 +98,50 @@ static ModeMode rofi_reddit_mode_result(Mode* mode, int mretv, char** input, uns
     } else if (mretv & MENU_PREVIOUS) {
         retv = PREVIOUS_DIALOG;
     } else if ((mretv & MENU_CUSTOM_INPUT || (mretv & MENU_OK))) {
-        char* subreddit = !private_data->listings && selected_line != 0
-                              ? private_data->subreddit_history->entries[selected_line].subreddit
-                              : sanitize_subrredit_name(*input);
+        char* subreddit = subreddit_from_history_or_input(
+            private_data->listings ? NULL : private_data->subreddit_history, input, selected_line);
         if (!subreddit || strlen(subreddit) == 0) {
-            private_data->subreddit_access = SUBREDDIT_ACCESS_UNKNOWN;
+            g_free(subreddit);
+            reset_rofi_input(input);
+            private_data->subreddit_access = SUBREDDIT_ACCESS_UNINITIALIZED;
             return RELOAD_DIALOG;
         }
-        add_history_entry(subreddit, private_data->subreddit_history);
-        private_data->selected_subreddit = subreddit;
-        fprintf(stdout, "Fetching subreddit=%s listings.\n", subreddit);
-        struct reddit_api_response* response = fetch_hot_listings(private_data->app, private_data->token, subreddit);
+        set_selected_subreddit(private_data, subreddit);
+        add_history_entry(private_data->selected_subreddit, private_data->subreddit_history);
+        g_free(subreddit);
+        free_listings(private_data->listings);
+        private_data->listings = NULL;
+        struct reddit_api_response* response =
+            fetch_hot_listings(private_data->app, private_data->token, private_data->selected_subreddit);
         switch (response->status_code) {
         case HTTP_OK:
             private_data->listings = deserialize_listings(response->response_buffer);
             private_data->subreddit_access = SUBREDDIT_ACCESS_OK;
+            if (private_data->listings->count == 0) {
+                private_data->subreddit_access = SUBREDDIT_ACCESS_NO_RESULTS;
+            }
             break;
         case HTTP_UNAUTHORIZED:
         case HTTP_FORBIDDEN: {
             enum subreddit_access denied_reason = subreddit_access_denied_reason(response);
             handle_forbidden_response(private_data, denied_reason);
-            if (denied_reason == SUBREDDIT_ACCESS_EXPIRED_TOKEN)
-                rofi_reddit_mode_result(mode, MENU_CUSTOM_INPUT, &subreddit, selected_line);
+            if (denied_reason == SUBREDDIT_ACCESS_EXPIRED_TOKEN) {
+                free_reddit_api_response(response);
+                response = fetch_hot_listings(private_data->app, private_data->token, private_data->selected_subreddit);
+                if (response->status_code == HTTP_OK) {
+                    private_data->listings = deserialize_listings(response->response_buffer);
+                    private_data->subreddit_access =
+                        private_data->listings->count == 0 ? SUBREDDIT_ACCESS_NO_RESULTS : SUBREDDIT_ACCESS_OK;
+                } else if (response->status_code == HTTP_NOT_FOUND) {
+                    private_data->subreddit_access = SUBREDDIT_ACCESS_DOESNT_EXIST;
+                }
+            }
             break;
         }
         case HTTP_NOT_FOUND:
             private_data->subreddit_access = SUBREDDIT_ACCESS_DOESNT_EXIST;
         default:
             break;
-        }
-        if (private_data->listings && private_data->listings->count > 0) {
-            fprintf(stdout, "Collected listings: %zu\n", private_data->listings->count);
         }
         retv = RELOAD_DIALOG;
         free_reddit_api_response(response);
@@ -154,7 +156,7 @@ static void rofi_reddit_mode_destroy(Mode* mode) {
         free_reddit_access_token(private_data->token);
         free_reddit_app(private_data->app);
         free_listings(private_data->listings);
-        free(private_data->selected_subreddit);
+        g_free(private_data->selected_subreddit);
         free_subreddit_history(private_data->subreddit_history);
         g_free(private_data);
         mode_set_private_data(mode, NULL);
@@ -164,7 +166,7 @@ static void rofi_reddit_mode_destroy(Mode* mode) {
 static char* get_display_value(const Mode* mode, unsigned int selected_line, G_GNUC_UNUSED int* state,
                                G_GNUC_UNUSED GList** attr_list, int get_entry) {
     RofiRedditModePrivateData* private_data = (RofiRedditModePrivateData*)mode_get_private_data(mode);
-    if (!private_data->listings) {
+    if (!private_data->listings || private_data->listings->count == 0) {
         return g_strdup_printf("%s", private_data->subreddit_history->entries[selected_line].subreddit);
     }
     if (selected_line >= private_data->listings->count) {
@@ -180,36 +182,27 @@ static int rofi_reddit_token_match(const Mode* sw, rofi_int_matcher** tokens, un
 
 static char* get_message(const Mode* mode) {
     RofiRedditModePrivateData* private_data = (RofiRedditModePrivateData*)mode_get_private_data(mode);
-    char* message = NULL;
     switch (private_data->subreddit_access) {
     case SUBREDDIT_ACCESS_UNINITIALIZED:
-        message = "Type a subreddit to fetch threads for!";
-        break;
+        return g_strdup("Type a subreddit to fetch threads for!");
+    case SUBREDDIT_ACCESS_NO_RESULTS:
+        return g_strdup_printf("No threads available for subreddit %s. Type another subreddit to fetch threads for!",
+                               private_data->selected_subreddit);
     case SUBREDDIT_ACCESS_OK:
-        message = "No threads available on this subreddit. Type another subreddit to fetch "
-                  "threads for!";
-        if (private_data->listings && private_data->listings->count > 0)
-            message = g_strdup_printf("Found %zu threads for subreddit '%s'. Now select a thread "
-                                      "to open in your browser!",
-                                      private_data->listings->count, private_data->selected_subreddit);
-        break;
+        return g_strdup_printf("Found %zu threads for subreddit %s. Now select a thread to open in your browser!",
+                               private_data->listings->count, private_data->selected_subreddit);
     case SUBREDDIT_ACCESS_DOESNT_EXIST:
-        message = "This subreddit does not exist. Please try another one.";
-        break;
+        return g_strdup_printf("Subreddit %s does not exist. Please try another one.",
+                               private_data->selected_subreddit);
     case SUBREDDIT_ACCESS_PRIVATE:
-        message = "This subreddit is private. You do not have access.";
-        break;
+        return g_strdup("This subreddit is private. You do not have access.");
     case SUBREDDIT_ACCESS_QUARANTINED:
-        message = "This subreddit is quarantined. Can't fetch threads.";
-        break;
+        return g_strdup("This subreddit is quarantined. Can't fetch threads.");
     case SUBREDDIT_ACCESS_UNKNOWN:
-        message = "Unknown access status for subreddit. Can't fetch threads.";
-        break;
+        return g_strdup("Unknown access status for subreddit. Can't fetch threads.");
     default:
-        message = "An unknown error occurred. Please try again.";
-        break;
+        return g_strdup("An unknown error occurred. Please try again.");
     }
-    return g_strdup(message);
 }
 
 Mode mode = {

@@ -1,8 +1,8 @@
 main_sources = [
   'reddit.c',
   'curl_wrappers.c',
-  'memory.c',
   'rofi_reddit.c',
+  'subreddit_input.c',
   'history.c',
 ]
 

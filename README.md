@@ -86,6 +86,22 @@ curl --request GET \
   --header 'Authorization: Bearer <access-token>'
 ```
 
+### Subreddit History
+
+When the plugin opens, it shows your recent subreddit history until you load a thread listing.
+
+- The first row is always `Add to history`.
+- Real history entries are kept in most-recent-first order.
+- Re-selecting a subreddit moves it to the front instead of duplicating it.
+- Failed fetches are still kept in history, so you can quickly retry them later.
+- Empty or whitespace-only input is ignored and the input is cleared.
+- History is persisted immediately after each change.
+
+History is stored in your XDG data directory:
+
+- `$XDG_DATA_HOME/rofi/rofi_reddit_history`, or
+- `~/.local/share/rofi/rofi_reddit_history` when `XDG_DATA_HOME` is not set.
+
 ## Development
 
 Run the tests (requires ruby 2.7!):

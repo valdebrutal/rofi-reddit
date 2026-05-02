@@ -1,6 +1,5 @@
 #include "reddit.h"
 #include "curl_wrappers.h"
-#include "memory.h"
 #include <curl/curl.h>
 #include <curl/easy.h>
 #include <curl/urlapi.h>
@@ -31,20 +30,20 @@ static bool is_auth_filled(const struct app_auth* auth) {
 }
 
 static struct app_auth* new_app_auth(toml_result_t toml) {
-    struct app_auth* auth = (struct app_auth*)LOG_ERR_MALLOC(struct app_auth, 1);
-    auth->client_name = strdup(toml_seek(toml.toptab, "reddit.client_name").u.s);
-    auth->client_id = strdup(toml_seek(toml.toptab, "reddit.client_id").u.s);
-    auth->client_secret = strdup(toml_seek(toml.toptab, "reddit.client_secret").u.s);
+    struct app_auth* auth = g_new(struct app_auth, 1);
+    auth->client_name = g_strdup(toml_seek(toml.toptab, "reddit.client_name").u.s);
+    auth->client_id = g_strdup(toml_seek(toml.toptab, "reddit.client_id").u.s);
+    auth->client_secret = g_strdup(toml_seek(toml.toptab, "reddit.client_secret").u.s);
     return auth;
 }
 
 static void free_app_auth(struct app_auth* auth) {
     if (!auth)
         return;
-    free(auth->client_name);
-    free(auth->client_id);
-    free(auth->client_secret);
-    free(auth);
+    g_free(auth->client_name);
+    g_free(auth->client_id);
+    g_free(auth->client_secret);
+    g_free(auth);
 }
 
 static int create_dir_if_not_exists(const char* path) {
@@ -63,10 +62,12 @@ static char* path_to_xdg_data_dir_at(char* xdg_env, char* xdg_fallback_path, cha
     char* dir = xdg_env && xdg_env[0] != '\0' ? xdg_env : xdg_fallback_path;
     if (create_dir_if_not_exists(dir) != 0) {
         fprintf(stderr, "Failed to create or access %s. Check permissions.\n", dir);
-        free(dir);
+        g_free(xdg_fallback_path);
         exit(EXIT_FAILURE);
     }
-    return g_build_filename(dir, subpath, NULL);
+    char* path = g_build_filename(dir, subpath, NULL);
+    g_free(xdg_fallback_path);
+    return path;
 }
 
 struct rofi_reddit_paths* new_rofi_reddit_paths() {
@@ -75,25 +76,25 @@ struct rofi_reddit_paths* new_rofi_reddit_paths() {
     if (stat(plugin_cfg_dir, &cfg_dir_stat) != 0 || !S_ISDIR(cfg_dir_stat.st_mode)) {
         fprintf(stderr, "Rofi Reddit config directory does not exist. This is a symptom of the installing process "
                         "having gone wrong. Try reinstalling. Aborting.\n");
-        free(plugin_cfg_dir);
+        g_free(plugin_cfg_dir);
         exit(EXIT_FAILURE);
     }
     char* config_file_path = g_build_filename(plugin_cfg_dir, "config.toml", NULL);
-    free(plugin_cfg_dir);
+    g_free(plugin_cfg_dir);
     if (access(config_file_path, F_OK) != 0 || access(config_file_path, R_OK) != 0) {
         fprintf(
             stderr,
             "Rofi Reddit config file does not exist or lacks read permissions at %s. Check permissions. Aborting.\n",
             config_file_path);
-        free(config_file_path);
+        g_free(config_file_path);
         exit(EXIT_FAILURE);
     }
-    struct rofi_reddit_paths* paths = LOG_ERR_MALLOC(struct rofi_reddit_paths, 1);
+    struct rofi_reddit_paths* paths = g_new(struct rofi_reddit_paths, 1);
     paths->config_path = config_file_path;
     char* plugin_cache_dir = path_to_xdg_data_dir_at(getenv("XDG_CACHE_HOME"),
                                                      g_build_filename(getenv("HOME"), ".cache", NULL), "rofi-reddit");
     paths->access_token_cache_path = g_build_filename(plugin_cache_dir, "access_token", NULL);
-    free(plugin_cache_dir);
+    g_free(plugin_cache_dir);
     struct stat access_token_cache_stat;
     // access token exists, process has read permissions and file is nonempty
     paths->access_token_cache_exists = stat(paths->access_token_cache_path, &access_token_cache_stat) == 0 &&
@@ -102,7 +103,7 @@ struct rofi_reddit_paths* new_rofi_reddit_paths() {
     char* plugin_data_dir = path_to_xdg_data_dir_at(getenv("XDG_DATA_HOME"),
                                                     g_build_filename(getenv("HOME"), ".local", "share", NULL), "rofi");
     paths->subreddit_history_path = g_build_filename(plugin_data_dir, "rofi_reddit_history", NULL);
-    free(plugin_data_dir);
+    g_free(plugin_data_dir);
     struct stat subreddit_history_stat;
     paths->subreddit_history_path_exists = stat(paths->subreddit_history_path, &subreddit_history_stat) == 0 &&
                                            access(paths->subreddit_history_path, R_OK | W_OK) == 0;
@@ -112,9 +113,10 @@ struct rofi_reddit_paths* new_rofi_reddit_paths() {
 void free_rofi_reddit_paths(const struct rofi_reddit_paths* paths) {
     if (!paths)
         return;
-    free((void*)paths->config_path);
-    free((void*)paths->access_token_cache_path);
-    free((void*)paths);
+    g_free((void*)paths->config_path);
+    g_free((void*)paths->access_token_cache_path);
+    g_free((void*)paths->subreddit_history_path);
+    g_free((void*)paths);
 }
 
 struct rofi_reddit_cfg* new_rofi_reddit_cfg(struct rofi_reddit_paths* paths) {
@@ -125,7 +127,7 @@ struct rofi_reddit_cfg* new_rofi_reddit_cfg(struct rofi_reddit_paths* paths) {
             paths->config_path);
         return NULL;
     }
-    struct rofi_reddit_cfg* cfg = (struct rofi_reddit_cfg*)LOG_ERR_MALLOC(struct rofi_reddit_cfg, 1);
+    struct rofi_reddit_cfg* cfg = g_new0(struct rofi_reddit_cfg, 1);
     toml_result_t parsed_toml = toml_parse_file_ex(paths->config_path);
     if (!parsed_toml.ok) {
         fprintf(stderr, "Failed to parse config file: %s\n", parsed_toml.errmsg);
@@ -152,15 +154,15 @@ struct rofi_reddit_cfg* new_rofi_reddit_cfg(struct rofi_reddit_paths* paths) {
 void free_rofi_reddit_cfg(const struct rofi_reddit_cfg* cfg) {
     if (!cfg)
         return;
-    if (!cfg->paths)
+    if (cfg->paths)
         free_rofi_reddit_paths(cfg->paths);
-    if (!cfg->auth)
+    if (cfg->auth)
         free_app_auth(cfg->auth);
-    free((void*)cfg);
+    g_free((void*)cfg);
 }
 
 RedditApp* new_reddit_app(struct rofi_reddit_cfg* config) {
-    RedditApp* app = (RedditApp*)LOG_ERR_MALLOC(RedditApp, 1);
+    RedditApp* app = g_new(RedditApp, 1);
     app->config = config;
     app->http_client = curl_easy_init();
     if (!app->http_client) {
@@ -175,13 +177,13 @@ void free_reddit_app(RedditApp* app) {
         return;
     curl_easy_cleanup(app->http_client);
     free_rofi_reddit_cfg(app->config);
-    free(app);
+    g_free(app);
 }
 
 static size_t write_callback(char* buffer, size_t chunks, size_t chunk_size, void* stream) {
     struct response_buffer* resp = (struct response_buffer*)stream;
     size_t realsize = chunks * chunk_size;
-    char* ptr = realloc(resp->buffer, resp->size + realsize + 1);
+    char* ptr = g_realloc(resp->buffer, resp->size + realsize + 1);
     resp->buffer = ptr;
     memcpy(&(resp->buffer[resp->size]), buffer, realsize);
     resp->size += realsize;
@@ -192,9 +194,10 @@ static size_t write_callback(char* buffer, size_t chunks, size_t chunk_size, voi
 static struct curl_slist* user_agent_header(const RedditApp* const app) {
     const char* ua_header_key = "User-Agent";
     size_t header_size = strlen(ua_header_key) + strlen(app->config->auth->client_name) + 1;
-    char* ua_header = (char*)LOG_ERR_MALLOC(char, header_size);
+    char* ua_header = g_new(char, header_size);
     snprintf(ua_header, header_size, "%s: %s", ua_header_key, app->config->auth->client_name);
     struct curl_slist* headers = curl_slist_append(NULL, ua_header);
+    g_free(ua_header);
     return headers;
 }
 
@@ -211,8 +214,8 @@ static json_t* deserialize_json_response(const struct response_buffer* resp) {
 static RedditAccessToken* deserialize_access_token(const struct response_buffer* resp) {
     json_t* payload = deserialize_json_response(resp);
     if (payload) {
-        RedditAccessToken* token = (RedditAccessToken*)LOG_ERR_MALLOC(RedditAccessToken, 1);
-        token->token = strdup(json_string_value(json_object_get(payload, "access_token")));
+        RedditAccessToken* token = g_new(RedditAccessToken, 1);
+        token->token = g_strdup(json_string_value(json_object_get(payload, "access_token")));
         json_decref(payload);
         return token;
     }
@@ -226,10 +229,10 @@ void deserialize_listing(json_t* listing_json, struct listing* deserialize_to, s
         return;
     }
     struct listing* item = deserialize_to + index;
-    item->title = strdup(json_string_value(json_object_get(data, "title")));
+    item->title = g_strdup(json_string_value(json_object_get(data, "title")));
 
     const char* selftext_val = json_string_value(json_object_get(data, "selftext"));
-    item->selftext = selftext_val ? strdup(selftext_val) : NULL;
+    item->selftext = selftext_val ? g_strdup(selftext_val) : NULL;
 
     json_t* ups_json = json_object_get(data, "ups");
     item->ups = (ups_json && json_is_integer(ups_json)) ? (uint32_t)json_integer_value(ups_json) : 0;
@@ -240,7 +243,7 @@ void deserialize_listing(json_t* listing_json, struct listing* deserialize_to, s
     item->url = NULL;
     if (path_val) {
         size_t len = strlen(HTTPS_SCHEME) + strlen(REDDIT_HOST) + strlen(path_val) + 1;
-        char* parsed_url = LOG_ERR_MALLOC(char, len);
+        char* parsed_url = g_new(char, len);
         snprintf(parsed_url, len, "%s%s%s", HTTPS_SCHEME, REDDIT_HOST, path_val);
         item->url = parsed_url;
     } else {
@@ -253,8 +256,8 @@ struct listings* deserialize_listings(const struct response_buffer* resp) {
     if (payload) {
         json_t* listing_payloads = json_object_get(json_object_get(payload, "data"), "children");
         size_t count = json_array_size(listing_payloads);
-        struct listings* reddit_listings = (struct listings*)LOG_ERR_MALLOC(struct listings, 1);
-        struct listing* items = (struct listing*)LOG_ERR_MALLOC(struct listing, count);
+        struct listings* reddit_listings = g_new(struct listings, 1);
+        struct listing* items = g_new0(struct listing, count);
         for (size_t i = 0; i < count; i++) {
             json_t* listing_json = json_array_get(listing_payloads, i);
             deserialize_listing(listing_json, items, i);
@@ -270,9 +273,9 @@ struct listings* deserialize_listings(const struct response_buffer* resp) {
 void free_listing(const struct listing* listing) {
     if (!listing)
         return;
-    free(listing->title);
-    free(listing->selftext);
-    free(listing->url);
+    g_free(listing->title);
+    g_free(listing->selftext);
+    g_free(listing->url);
 }
 
 void free_listings(const struct listings* listings) {
@@ -281,8 +284,8 @@ void free_listings(const struct listings* listings) {
     for (size_t i = 0; i < listings->count; i++) {
         free_listing(&listings->items[i]);
     }
-    free((void*)listings->items);
-    free((void*)listings);
+    g_free((void*)listings->items);
+    g_free((void*)listings);
 }
 
 struct reddit_api_response* fetch_reddit_access_token_from_api(const RedditApp* app) {
@@ -349,16 +352,16 @@ RedditAccessToken* new_reddit_access_token(RedditApp* app) {
             free_reddit_app(app);
             exit(EXIT_FAILURE);
         }
-        char* buffer = malloc(*ACCESS_TOKEN_MAX_SIZE);
+        char* buffer = g_new(char, *ACCESS_TOKEN_MAX_SIZE);
         if (fgets(buffer, *ACCESS_TOKEN_MAX_SIZE, CACHE) == NULL) {
             fprintf(stderr, "Failed to read access token from cache file: %s\n",
                     app->config->paths->access_token_cache_path);
-            free(buffer);
+            g_free(buffer);
             fclose(CACHE);
             free_reddit_app(app);
             exit(EXIT_FAILURE);
         }
-        RedditAccessToken* cached_token = LOG_ERR_MALLOC(RedditAccessToken, 1);
+        RedditAccessToken* cached_token = g_new(RedditAccessToken, 1);
         cached_token->token = buffer;
         reddit_token = cached_token;
         fprintf(stdout, "Access token cache hit.\n");
@@ -373,8 +376,10 @@ RedditAccessToken* new_reddit_access_token(RedditApp* app) {
 }
 
 void free_reddit_access_token(RedditAccessToken* token) {
-    free(token->token);
-    free(token);
+    if (!token)
+        return;
+    g_free(token->token);
+    g_free(token);
 }
 
 struct reddit_api_response* fetch_hot_listings(const RedditApp* app, const RedditAccessToken* token,
@@ -414,8 +419,7 @@ struct reddit_api_response* fetch_hot_listings(const RedditApp* app, const Reddi
 }
 
 struct reddit_api_response* new_reddit_api_response(struct response_buffer* response, long* status_code) {
-    struct reddit_api_response* reddit_response =
-        (struct reddit_api_response*)LOG_ERR_MALLOC(struct reddit_api_response, 1);
+    struct reddit_api_response* reddit_response = g_new(struct reddit_api_response, 1);
     reddit_response->status_code = http_status_code_from(*status_code);
     reddit_response->response_buffer = response;
     return reddit_response;
@@ -425,7 +429,7 @@ void free_reddit_api_response(struct reddit_api_response* response) {
     if (!response)
         return;
     free_response_buffer(response->response_buffer);
-    free(response);
+    g_free(response);
 }
 
 enum subreddit_access subreddit_access_denied_reason(const struct reddit_api_response* response) {

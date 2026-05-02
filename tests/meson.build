@@ -61,7 +61,7 @@ test(
   executable(
     'unit-test-access-token',
     ['fixtures.c', 'test_access_token_fetch.c'],
-    objects: rofi_reddit_shared_lib.extract_objects('reddit.c', 'memory.c'),
+    objects: rofi_reddit_shared_lib.extract_objects('reddit.c'),
     dependencies: [unity_dep] + deps,
     link_with: [mocks],
     include_directories: ['mocks', project_inc],
@@ -76,7 +76,7 @@ test(
   executable(
     'unit-test-deserialize-listing',
     ['test_deserialize_listing.c'],
-    objects: rofi_reddit_shared_lib.extract_objects('reddit.c', 'memory.c', 'curl_wrappers.c'),
+    objects: rofi_reddit_shared_lib.extract_objects('reddit.c', 'curl_wrappers.c'),
     include_directories: [project_inc],
     dependencies: [unity_dep] + deps,
   ),
@@ -90,7 +90,7 @@ test(
   executable(
     'unit-test-subreddit-access-denied',
     ['test_subreddit_access_denied.c'],
-    objects: rofi_reddit_shared_lib.extract_objects('reddit.c', 'memory.c', 'curl_wrappers.c'),
+    objects: rofi_reddit_shared_lib.extract_objects('reddit.c', 'curl_wrappers.c'),
     include_directories: [project_inc],
     dependencies: [unity_dep] + deps,
   ),
@@ -104,7 +104,21 @@ test(
   executable(
     'unit-test-history',
     ['test_history.c'],
-    objects: rofi_reddit_shared_lib.extract_objects('history.c', 'reddit.c', 'memory.c', 'curl_wrappers.c'),
+    objects: rofi_reddit_shared_lib.extract_objects('history.c', 'reddit.c', 'curl_wrappers.c'),
+    include_directories: [project_inc],
+    dependencies: [unity_dep] + deps,
+  ),
+  env: test_env,
+  protocol: 'exitcode',
+  workdir: meson.current_source_dir(),
+)
+
+test(
+  'unit_test_rofi_reddit',
+  executable(
+    'unit-test-rofi-reddit',
+    ['test_rofi_reddit.c'],
+    objects: rofi_reddit_shared_lib.extract_objects('subreddit_input.c', 'history.c'),
     include_directories: [project_inc],
     dependencies: [unity_dep] + deps,
   ),
@@ -121,7 +135,7 @@ if fs.exists(config_file)
     executable(
       'integration-test-access-token',
       ['integration_test_access_token.c'],
-      objects: rofi_reddit_shared_lib.extract_objects('reddit.c', 'curl_wrappers.c', 'memory.c'),
+      objects: rofi_reddit_shared_lib.extract_objects('reddit.c', 'curl_wrappers.c'),
       dependencies: deps + [unity_dep],
       include_directories: [project_inc],
     ),
