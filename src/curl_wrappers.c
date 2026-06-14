@@ -22,6 +22,35 @@ long* get_response_status(CURL* client) {
     return http_code;
 }
 
+void configure_access_token_request(CURL* client, const struct access_token_request* request) {
+    if (!client || !request)
+        return;
+
+    curl_easy_setopt(client, CURLOPT_POST, 1L);
+    curl_easy_setopt(client, CURLOPT_USERNAME, request->username);
+    curl_easy_setopt(client, CURLOPT_PASSWORD, request->password);
+    curl_easy_setopt(client, CURLOPT_WRITEFUNCTION, request->write_callback);
+    curl_easy_setopt(client, CURLOPT_WRITEDATA, request->response_buffer);
+    curl_easy_setopt(client, CURLOPT_URL, request->url);
+    curl_easy_setopt(client, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
+    curl_easy_setopt(client, CURLOPT_HTTPHEADER, request->headers);
+    curl_easy_setopt(client, CURLOPT_POSTFIELDS, request->post_fields);
+}
+
+void configure_hot_listings_request(CURL* client, const struct hot_listings_request* request) {
+    if (!client || !request)
+        return;
+
+    curl_easy_setopt(client, CURLOPT_POST, 0L);
+    curl_easy_setopt(client, CURLOPT_WRITEFUNCTION, request->write_callback);
+    curl_easy_setopt(client, CURLOPT_WRITEDATA, request->response_buffer);
+    curl_easy_setopt(client, CURLOPT_URL, request->url);
+    curl_easy_setopt(client, CURLOPT_HTTPAUTH, CURLAUTH_BEARER);
+    curl_easy_setopt(client, CURLOPT_XOAUTH2_BEARER, request->bearer_token);
+    curl_easy_setopt(client, CURLOPT_HTTPHEADER, request->headers);
+    curl_easy_setopt(client, CURLOPT_FOLLOWLOCATION, 1L);
+}
+
 enum http_status_code http_status_code_from(long code) {
     switch (code) {
     case 200L:

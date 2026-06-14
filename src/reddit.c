@@ -191,11 +191,9 @@ static size_t write_callback(char* buffer, size_t chunks, size_t chunk_size, voi
     return realsize;
 }
 
-static struct curl_slist* user_agent_header(const RedditApp* const app) {
+static struct curl_slist* user_agent_header(const RedditApp* app) {
     const char* ua_header_key = "User-Agent";
-    size_t header_size = strlen(ua_header_key) + strlen(app->config->auth->client_name) + 1;
-    char* ua_header = g_new(char, header_size);
-    snprintf(ua_header, header_size, "%s: %s", ua_header_key, app->config->auth->client_name);
+    char* ua_header = g_strdup_printf("%s: %s", ua_header_key, app->config->auth->client_name);
     struct curl_slist* headers = curl_slist_append(NULL, ua_header);
     g_free(ua_header);
     return headers;
@@ -300,15 +298,16 @@ struct reddit_api_response* fetch_reddit_access_token_from_api(const RedditApp* 
     char* url_str = NULL;
     curl_url_get(url, CURLUPART_URL, &url_str, 0);
 
-    curl_easy_setopt(app->http_client, CURLOPT_POST, 1L);
-    curl_easy_setopt(app->http_client, CURLOPT_USERNAME, app->config->auth->client_id);
-    curl_easy_setopt(app->http_client, CURLOPT_PASSWORD, app->config->auth->client_secret);
-    curl_easy_setopt(app->http_client, CURLOPT_WRITEFUNCTION, write_callback);
-    curl_easy_setopt(app->http_client, CURLOPT_WRITEDATA, buffer);
-    curl_easy_setopt(app->http_client, CURLOPT_URL, url_str);
-    curl_easy_setopt(app->http_client, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
-    curl_easy_setopt(app->http_client, CURLOPT_HTTPHEADER, ua_header);
-    curl_easy_setopt(app->http_client, CURLOPT_POSTFIELDS, "scope=read&grant_type=client_credentials");
+    struct access_token_request request = {
+        .username = app->config->auth->client_id,
+        .password = app->config->auth->client_secret,
+        .write_callback = write_callback,
+        .response_buffer = buffer,
+        .url = url_str,
+        .headers = ua_header,
+        .post_fields = "scope=read&grant_type=client_credentials",
+    };
+    configure_access_token_request(app->http_client, &request);
     // curl_easy_setopt(app->http_client, CURLOPT_VERBOSE, 1L);
 
     curl_easy_perform(app->http_client);
@@ -391,21 +390,21 @@ struct reddit_api_response* fetch_hot_listings(const RedditApp* app, const Reddi
     CURL* url = curl_url();
     curl_url_set(url, CURLUPART_SCHEME, "https", 0);
     curl_url_set(url, CURLUPART_HOST, REDDIT_API_HOST, 0);
-    char url_path[100];
-    snprintf(url_path, 100, "r/%s/hot/", subreddit);
+    char* url_path = g_strdup_printf("r/%s/hot/", subreddit);
     curl_url_set(url, CURLUPART_PATH, url_path, 0);
     curl_url_set(url, CURLUPART_QUERY, "limit=15", 0); // TODO: make configurable
     char* url_str = NULL;
     curl_url_get(url, CURLUPART_URL, &url_str, 0);
+    g_free(url_path);
 
-    curl_easy_setopt(app->http_client, CURLOPT_POST, 0L);
-    curl_easy_setopt(app->http_client, CURLOPT_WRITEFUNCTION, write_callback);
-    curl_easy_setopt(app->http_client, CURLOPT_WRITEDATA, response_buffer);
-    curl_easy_setopt(app->http_client, CURLOPT_URL, url_str);
-    curl_easy_setopt(app->http_client, CURLOPT_HTTPAUTH, CURLAUTH_BEARER);
-    curl_easy_setopt(app->http_client, CURLOPT_XOAUTH2_BEARER, token->token);
-    curl_easy_setopt(app->http_client, CURLOPT_HTTPHEADER, ua_header);
-    curl_easy_setopt(app->http_client, CURLOPT_FOLLOWLOCATION, 1L);
+    struct hot_listings_request request = {
+        .write_callback = write_callback,
+        .response_buffer = response_buffer,
+        .url = url_str,
+        .bearer_token = token->token,
+        .headers = ua_header,
+    };
+    configure_hot_listings_request(app->http_client, &request);
     // curl_easy_setopt(app->http_client, CURLOPT_VERBOSE, 1L);
 
     curl_easy_perform(app->http_client);
@@ -420,8 +419,10 @@ struct reddit_api_response* fetch_hot_listings(const RedditApp* app, const Reddi
 
 struct reddit_api_response* new_reddit_api_response(struct response_buffer* response, long* status_code) {
     struct reddit_api_response* reddit_response = g_new(struct reddit_api_response, 1);
-    reddit_response->status_code = http_status_code_from(*status_code);
+    long raw_status_code = status_code ? *status_code : 0L;
+    reddit_response->status_code = http_status_code_from(raw_status_code);
     reddit_response->response_buffer = response;
+    g_free(status_code);
     return reddit_response;
 }
 

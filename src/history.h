@@ -18,11 +18,15 @@ struct subreddit_history {
     FILE* history_file;
 };
 
+struct history_entries_buffer {
+    char* entries;
+    size_t entry_capacity;
+};
+
 struct subreddit_history* new_subreddit_history(struct rofi_reddit_paths* paths);
 void free_subreddit_history(struct subreddit_history* history);
 void add_history_entry(char* subreddit, struct subreddit_history* history);
 char* get_history_entry_for_line(struct subreddit_history* history, size_t selected_line);
 
-size_t read_history_entries(FILE* history_file, char* buffer);
-void fill_history_entries(struct subreddit_history* history, char* buffer, size_t history_records_read);
+size_t read_history_entries(FILE* history_file, struct history_entries_buffer output);
 #endif

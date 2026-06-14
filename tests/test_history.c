@@ -1,6 +1,7 @@
 #include "history.h"
 #include "reddit.h"
 #include "unity.h"
+#include <glib.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -76,6 +77,33 @@ void test_new_history_starts_with_placeholder_and_adds_first_entry(void) {
     TEST_ASSERT_EQUAL(2, history->count);
     TEST_ASSERT_EQUAL_STRING("testsubreddit", history->entries[1].subreddit);
     free_subreddit_history(history);
+}
+
+void test_new_history_creates_missing_parent_directories(void) {
+    char temp_dir_template[] = "/tmp/rofi_reddit_history_dir_test_XXXXXX";
+    char* temp_dir = mkdtemp(temp_dir_template);
+    TEST_ASSERT_NOT_NULL(temp_dir);
+
+    char* rofi_dir = g_build_filename(temp_dir, "rofi", NULL);
+    char* nested_history_path = g_build_filename(rofi_dir, "rofi_reddit_history", NULL);
+
+    struct rofi_reddit_paths nested_paths = {
+        .subreddit_history_path = nested_history_path,
+        .subreddit_history_path_exists = false,
+    };
+
+    struct subreddit_history* history = new_subreddit_history(&nested_paths);
+
+    TEST_ASSERT_NOT_NULL(history);
+    TEST_ASSERT_EQUAL(1, history->count);
+    TEST_ASSERT_EQUAL(0, access(nested_history_path, F_OK));
+
+    free_subreddit_history(history);
+    remove(nested_history_path);
+    rmdir(rofi_dir);
+    rmdir(temp_dir);
+    g_free(nested_history_path);
+    g_free(rofi_dir);
 }
 
 void test_add_entry_when_history_is_full(void) {
@@ -267,7 +295,7 @@ void test_read_history_entries_empty_file(void) {
     FILE* f = fopen(fake_paths.subreddit_history_path, "w+");
     TEST_ASSERT_NOT_NULL(f);
     char buffer[MAX_HISTORY_ENTRY_LENGTH * 10] = {0};
-    size_t read = read_history_entries(f, buffer);
+    size_t read = read_history_entries(f, (struct history_entries_buffer){.entries = buffer, .entry_capacity = 10});
     TEST_ASSERT_EQUAL(0, read);
     fclose(f);
 }
@@ -279,7 +307,7 @@ void test_read_history_entries_single_entry(void) {
     FILE* f = fopen(fake_paths.subreddit_history_path, "r");
     TEST_ASSERT_NOT_NULL(f);
     char buffer[MAX_HISTORY_ENTRY_LENGTH * 2] = {0};
-    size_t read = read_history_entries(f, buffer);
+    size_t read = read_history_entries(f, (struct history_entries_buffer){.entries = buffer, .entry_capacity = 2});
     TEST_ASSERT_EQUAL(1, read);
     TEST_ASSERT_EQUAL_STRING("testsubreddit", buffer);
     fclose(f);
@@ -292,10 +320,27 @@ void test_read_history_entries_multiple_entries(void) {
     FILE* f = fopen(fake_paths.subreddit_history_path, "r");
     TEST_ASSERT_NOT_NULL(f);
     char buffer[MAX_HISTORY_ENTRY_LENGTH * 4] = {0};
-    size_t read = read_history_entries(f, buffer);
+    size_t read = read_history_entries(f, (struct history_entries_buffer){.entries = buffer, .entry_capacity = 4});
     TEST_ASSERT_EQUAL(3, read);
     for (size_t i = 0; i < 3; ++i) {
         TEST_ASSERT_EQUAL_STRING(lines[i], buffer + i * MAX_HISTORY_ENTRY_LENGTH);
+    }
+    fclose(f);
+}
+
+void test_read_history_entries_keeps_newest_entries_when_buffer_is_full(void) {
+    const char* lines[] = {"one", "two", "three", "four", "five"};
+    const char* expected[] = {"three", "four", "five"};
+    write_lines_to_file(fake_paths.subreddit_history_path, lines, 5);
+
+    FILE* f = fopen(fake_paths.subreddit_history_path, "r");
+    TEST_ASSERT_NOT_NULL(f);
+    char buffer[MAX_HISTORY_ENTRY_LENGTH * 3] = {0};
+    size_t read = read_history_entries(f, (struct history_entries_buffer){.entries = buffer, .entry_capacity = 3});
+
+    TEST_ASSERT_EQUAL(3, read);
+    for (size_t i = 0; i < 3; ++i) {
+        TEST_ASSERT_EQUAL_STRING(expected[i], buffer + i * MAX_HISTORY_ENTRY_LENGTH);
     }
     fclose(f);
 }
@@ -310,7 +355,7 @@ void test_read_history_entries_truncates_long_lines(void) {
     FILE* f = fopen(fake_paths.subreddit_history_path, "r");
     TEST_ASSERT_NOT_NULL(f);
     char buffer[MAX_HISTORY_ENTRY_LENGTH * 3] = {0};
-    size_t read = read_history_entries(f, buffer);
+    size_t read = read_history_entries(f, (struct history_entries_buffer){.entries = buffer, .entry_capacity = 3});
 
     TEST_ASSERT_EQUAL(1, read);
     for (int i = 0; i < MAX_HISTORY_ENTRY_LENGTH - 1; ++i) {
@@ -326,6 +371,7 @@ void test_read_history_entries_truncates_long_lines(void) {
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_new_history_starts_with_placeholder_and_adds_first_entry);
+    RUN_TEST(test_new_history_creates_missing_parent_directories);
     RUN_TEST(test_add_entry_when_history_is_full);
     RUN_TEST(test_add_entry_with_existing_history_and_new_entries);
     RUN_TEST(test_add_entry_with_max_length);
@@ -340,6 +386,7 @@ int main(void) {
     RUN_TEST(test_read_history_entries_empty_file);
     RUN_TEST(test_read_history_entries_single_entry);
     RUN_TEST(test_read_history_entries_multiple_entries);
+    RUN_TEST(test_read_history_entries_keeps_newest_entries_when_buffer_is_full);
     RUN_TEST(test_read_history_entries_truncates_long_lines);
 
     return UNITY_END();

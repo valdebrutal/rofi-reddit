@@ -167,6 +167,13 @@ static char* get_display_value(const Mode* mode, unsigned int selected_line, G_G
                                G_GNUC_UNUSED GList** attr_list, int get_entry) {
     RofiRedditModePrivateData* private_data = (RofiRedditModePrivateData*)mode_get_private_data(mode);
     if (!private_data->listings || private_data->listings->count == 0) {
+        if (!private_data->subreddit_history) {
+            return g_strdup("Add to history");
+        }
+        if (selected_line >= private_data->subreddit_history->count) {
+            fprintf(stderr, "Selected line out of range.\n");
+            return NULL;
+        }
         return g_strdup_printf("%s", private_data->subreddit_history->entries[selected_line].subreddit);
     }
     if (selected_line >= private_data->listings->count) {
