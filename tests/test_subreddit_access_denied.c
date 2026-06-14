@@ -1,6 +1,6 @@
-#include "memory.h"
 #include "reddit.h"
 #include "unity.h"
+#include <glib.h>
 #include <jansson.h>
 #include <string.h>
 
@@ -11,11 +11,11 @@ void tearDown(void) {
 }
 
 static struct reddit_api_response* make_response(enum http_status_code status, const char* json) {
-    struct response_buffer* resp_buf = LOG_ERR_MALLOC(struct response_buffer, 1);
-    resp_buf->buffer = strdup(json);
+    struct response_buffer* resp_buf = g_new(struct response_buffer, 1);
+    resp_buf->buffer = g_strdup(json);
     resp_buf->size = strlen(resp_buf->buffer);
 
-    struct reddit_api_response* response = LOG_ERR_MALLOC(struct reddit_api_response, 1);
+    struct reddit_api_response* response = g_new(struct reddit_api_response, 1);
     response->status_code = status;
     response->response_buffer = resp_buf;
     return response;

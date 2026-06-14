@@ -13,3 +13,4 @@ tests/mocks/mock_*
 tests/mocks/curl/mock_*
 
 .ruby-version
+.serena

@@ -1,5 +1,3 @@
-
-#include "memory.h"
 #include "reddit.h"
 #include "unity.h"
 #include <jansson.h>
@@ -45,71 +43,71 @@ void tearDown(void) {
 }
 
 void test_happy_path(void) {
-    struct listing* listing = LOG_ERR_MALLOC(struct listing, 1);
+    struct listing listing = {0};
     json_t* json = new_json();
-    deserialize_listing(json, listing, 0);
+    deserialize_listing(json, &listing, 0);
     struct listing expected = new_expected_listing();
-    assert_listing_equal(&expected, listing);
-    free_listing(listing);
+    assert_listing_equal(&expected, &listing);
+    free_listing(&listing);
     json_decref(json);
 }
 
 void test_no_data_key(void) {
-    struct listing* listing = calloc(1, sizeof(struct listing));
+    struct listing listing = {0};
     json_t* json = new_json();
     json_object_del(json, "data");
-    deserialize_listing(json, listing, 0);
-    assert_listing_not_initialized(listing);
-    free_listing(listing);
+    deserialize_listing(json, &listing, 0);
+    assert_listing_not_initialized(&listing);
+    free_listing(&listing);
     json_decref(json);
 }
 
 void test_no_title_key(void) {
-    struct listing* listing = calloc(1, sizeof(struct listing));
+    struct listing listing = {0};
     json_t* json = new_json();
     json_object_del(json_object_get(json, "data"), "title");
-    deserialize_listing(json, listing, 0);
-    assert_listing_not_initialized(listing);
-    free_listing(listing);
+    deserialize_listing(json, &listing, 0);
+    assert_listing_not_initialized(&listing);
+    free_listing(&listing);
     json_decref(json);
 }
 
 void test_nullable_keys_are_missing(void) {
-    struct listing* listing = calloc(1, sizeof(struct listing));
+    struct listing listing = {0};
     json_t* json = new_json();
     json_object_del(json_object_get(json, "data"), "selftext");
     json_object_del(json_object_get(json, "data"), "ups");
-    deserialize_listing(json, listing, 0);
+    deserialize_listing(json, &listing, 0);
     struct listing expected = new_expected_listing();
     expected.selftext = NULL;
     expected.ups = 0;
-    assert_listing_equal(&expected, listing);
-    free_listing(listing);
+    assert_listing_equal(&expected, &listing);
+    free_listing(&listing);
     json_decref(json);
 }
 
 void test_permalink_fallsback_to_url(void) {
-    struct listing* listing = calloc(1, sizeof(struct listing));
+    struct listing listing = {0};
     json_t* json = new_json();
     json_object_del(json_object_get(json, "data"), "permalink");
     json_object_set_new(json_object_get(json, "data"), "url", json_string("/fallback_url"));
-    deserialize_listing(json, listing, 0);
+    deserialize_listing(json, &listing, 0);
     struct listing expected = new_expected_listing();
     expected.url = "https://www.reddit.com/fallback_url";
-    assert_listing_equal(&expected, listing);
-    free_listing(listing);
+    assert_listing_equal(&expected, &listing);
+    free_listing(&listing);
     json_decref(json);
 }
 
 void test_permalink_and_url_missing(void) {
-    struct listing* listing = calloc(1, sizeof(struct listing));
+    struct listing listing = {0};
     json_t* json = new_json();
     json_object_del(json_object_get(json, "data"), "permalink");
-    deserialize_listing(json, listing, 0);
+    deserialize_listing(json, &listing, 0);
     struct listing expected = new_expected_listing();
     expected.url = NULL;
-    assert_listing_equal(&expected, listing);
-    free_listing(listing);
+    assert_listing_equal(&expected, &listing);
+    free_listing(&listing);
     json_decref(json);
 }
 

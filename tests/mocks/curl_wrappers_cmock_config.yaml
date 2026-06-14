@@ -3,6 +3,8 @@
   :mock_prefix: mock_
   :mock_path: build/mocks
   :plugins:
+    - callback
     - ignore
+    - expect_any_args
   :attributes:
     - CURL_EXTERN

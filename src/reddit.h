@@ -12,6 +12,8 @@ struct rofi_reddit_paths {
     const char* config_path;
     const char* access_token_cache_path;
     bool access_token_cache_exists;
+    const char* subreddit_history_path;
+    bool subreddit_history_path_exists;
 };
 
 struct rofi_reddit_paths* new_rofi_reddit_paths();
@@ -83,6 +85,7 @@ void free_reddit_api_response(struct reddit_api_response* response);
 enum subreddit_access {
     SUBREDDIT_ACCESS_UNINITIALIZED,
     SUBREDDIT_ACCESS_OK,
+    SUBREDDIT_ACCESS_NO_RESULTS,
     SUBREDDIT_ACCESS_DOESNT_EXIST,
     SUBREDDIT_ACCESS_PRIVATE,
     SUBREDDIT_ACCESS_QUARANTINED,
